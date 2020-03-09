@@ -110,124 +110,11 @@ class zcl_logger definition
           value(self)   type ref to zif_logger .
 
     methods save_log.
-endclass.
+ENDCLASS.
 
 
 
-class zcl_logger implementation.
-
-
-  method drill_down_into_exception.
-    data: i                  type i value 2,
-          previous_exception type ref to cx_root,
-          exceptions         type tty_exception.
-
-    field-symbols <ex> like line of exceptions.
-    append initial line to exceptions assigning <ex>.
-    <ex>-level = 1.
-    <ex>-exception = exception.
-
-    previous_exception = exception.
-
-    while i <= settings->get_max_exception_drill_down( ).
-      if previous_exception->previous is not bound.
-        exit.
-      endif.
-
-      previous_exception ?= previous_exception->previous.
-
-      append initial line to exceptions assigning <ex>.
-      <ex>-level = i.
-      <ex>-exception = previous_exception.
-      i = i + 1.
-    endwhile.
-
-    field-symbols <ret> like line of rt_exception_data_table.
-    sort exceptions by level descending.                   "Display the deepest exception first
-    loop at exceptions assigning <ex>.
-      append initial line to rt_exception_data_table assigning <ret>.
-      <ret>-exception = <ex>-exception.
-      <ret>-msgty     = type.
-      <ret>-probclass = importance.
-    endloop.
-  endmethod.
-
-
-  method get_message_handles.
-
-    data: log_handle type bal_t_logh,
-          filter     type bal_s_mfil.
-
-    field-symbols <f> like line of filter-msgty.
-
-    insert handle into table log_handle.
-
-    if msgtype is not initial.
-      append initial line to filter-msgty assigning <f>.
-      <f>-sign   = 'I'.
-      <f>-option = 'EQ'.
-      <f>-low    = msgtype.
-    endif.
-
-    call function 'BAL_GLB_SEARCH_MSG'
-      exporting
-        i_t_log_handle = log_handle
-        i_s_msg_filter = filter
-      importing
-        e_t_msg_handle = rt_message_handles
-      exceptions
-        msg_not_found  = 0.
-
-  endmethod.
-
-
-  method new.
-
-    if auto_save is supplied.
-      r_log ?= zcl_logger_factory=>create_log(
-        object = object
-        subobject = subobject
-        desc = desc
-        context = context
-        settings = zcl_logger_factory=>create_settings(
-          )->set_usage_of_secondary_db_conn( second_db_conn
-          )->set_autosave( auto_save )
-      ).
-    else.
-      r_log ?= zcl_logger_factory=>create_log(
-        object = object
-        subobject = subobject
-        desc = desc
-        context = context
-        settings = zcl_logger_factory=>create_settings(
-          )->set_usage_of_secondary_db_conn( second_db_conn )
-      ).
-    endif.
-
-  endmethod.
-
-
-  method open.
-
-    if auto_save is supplied.
-      r_log ?= zcl_logger_factory=>open_log(
-        object = object
-        subobject = subobject
-        desc = desc
-        create_if_does_not_exist = create_if_does_not_exist
-        settings = zcl_logger_factory=>create_settings(
-          )->set_autosave( auto_save )
-      ).
-    else.
-      r_log ?= zcl_logger_factory=>open_log(
-        object = object
-        subobject = subobject
-        desc = desc
-        create_if_does_not_exist = create_if_does_not_exist
-      ).
-    endif.
-
-  endmethod.
+CLASS ZCL_LOGGER IMPLEMENTATION.
 
 
   method a.
@@ -437,7 +324,8 @@ class zcl_logger implementation.
           components      type cl_abap_structdescr=>component_table,
           component       like line of components,
           string_to_log   type string.
-    field-symbols: <component>   type any.
+    field-symbols: <component>   type any,
+                   <table> TYPE ANY TABLE.
 
     msg_struct_type ?= cl_abap_typedescr=>describe_by_data( obj_to_log ).
     components = msg_struct_type->get_components( ).
@@ -462,10 +350,51 @@ class zcl_logger implementation.
             receiving
               self          = self
           ).
+        ELSEIF msg_type->kind = cl_abap_typedescr=>kind_table.
+          ASSIGN <component> TO <table>.
+          LOOP AT <table> ASSIGNING FIELD-SYMBOL(<row>).
+            add( <row> ).
+          ENDLOOP.
         endif.
       endif.
     endloop.
     add( '--- End of structure ---' ).
+  endmethod.
+
+
+  method drill_down_into_exception.
+    data: i                  type i value 2,
+          previous_exception type ref to cx_root,
+          exceptions         type tty_exception.
+
+    field-symbols <ex> like line of exceptions.
+    append initial line to exceptions assigning <ex>.
+    <ex>-level = 1.
+    <ex>-exception = exception.
+
+    previous_exception = exception.
+
+    while i <= settings->get_max_exception_drill_down( ).
+      if previous_exception->previous is not bound.
+        exit.
+      endif.
+
+      previous_exception ?= previous_exception->previous.
+
+      append initial line to exceptions assigning <ex>.
+      <ex>-level = i.
+      <ex>-exception = previous_exception.
+      i = i + 1.
+    endwhile.
+
+    field-symbols <ret> like line of rt_exception_data_table.
+    sort exceptions by level descending.                   "Display the deepest exception first
+    loop at exceptions assigning <ex>.
+      append initial line to rt_exception_data_table assigning <ret>.
+      <ret>-exception = <ex>-exception.
+      <ret>-msgty     = type.
+      <ret>-probclass = importance.
+    endloop.
   endmethod.
 
 
@@ -542,6 +471,34 @@ class zcl_logger implementation.
   endmethod.
 
 
+  method get_message_handles.
+
+    data: log_handle type bal_t_logh,
+          filter     type bal_s_mfil.
+
+    field-symbols <f> like line of filter-msgty.
+
+    insert handle into table log_handle.
+
+    if msgtype is not initial.
+      append initial line to filter-msgty assigning <f>.
+      <f>-sign   = 'I'.
+      <f>-option = 'EQ'.
+      <f>-low    = msgtype.
+    endif.
+
+    call function 'BAL_GLB_SEARCH_MSG'
+      exporting
+        i_t_log_handle = log_handle
+        i_s_msg_filter = filter
+      importing
+        e_t_msg_handle = rt_message_handles
+      exceptions
+        msg_not_found  = 0.
+
+  endmethod.
+
+
   method has_errors.
 
     rv_yes = boolc( lines( get_message_handles( msgtype = 'E' ) ) > 0 ).
@@ -578,6 +535,55 @@ class zcl_logger implementation.
   method length.
 
     rv_length = lines( get_message_handles( ) ).
+
+  endmethod.
+
+
+  method new.
+
+    if auto_save is supplied.
+      r_log ?= zcl_logger_factory=>create_log(
+        object = object
+        subobject = subobject
+        desc = desc
+        context = context
+        settings = zcl_logger_factory=>create_settings(
+          )->set_usage_of_secondary_db_conn( second_db_conn
+          )->set_autosave( auto_save )
+      ).
+    else.
+      r_log ?= zcl_logger_factory=>create_log(
+        object = object
+        subobject = subobject
+        desc = desc
+        context = context
+        settings = zcl_logger_factory=>create_settings(
+          )->set_usage_of_secondary_db_conn( second_db_conn )
+      ).
+    endif.
+
+  endmethod.
+
+
+  method open.
+
+    if auto_save is supplied.
+      r_log ?= zcl_logger_factory=>open_log(
+        object = object
+        subobject = subobject
+        desc = desc
+        create_if_does_not_exist = create_if_does_not_exist
+        settings = zcl_logger_factory=>create_settings(
+          )->set_autosave( auto_save )
+      ).
+    else.
+      r_log ?= zcl_logger_factory=>open_log(
+        object = object
+        subobject = subobject
+        desc = desc
+        create_if_does_not_exist = create_if_does_not_exist
+      ).
+    endif.
 
   endmethod.
 
@@ -621,18 +627,6 @@ class zcl_logger implementation.
   endmethod.
 
 
-  method w.
-    self = add(
-      obj_to_log    = obj_to_log
-      context       = context
-      callback_form = callback_form
-      callback_prog = callback_prog
-      callback_fm   = callback_fm
-      type          = 'W'
-      importance    = importance ).
-  endmethod.
-  
-  
   method save_log.
     data log_handles type bal_t_logh.
     data log_numbers type bal_t_lgnm.
@@ -651,4 +645,16 @@ class zcl_logger implementation.
       me->db_number = log_number-lognumber.
     endif.
   endmethod.
-endclass.
+
+
+  method w.
+    self = add(
+      obj_to_log    = obj_to_log
+      context       = context
+      callback_form = callback_form
+      callback_prog = callback_prog
+      callback_fm   = callback_fm
+      type          = 'W'
+      importance    = importance ).
+  endmethod.
+ENDCLASS.
